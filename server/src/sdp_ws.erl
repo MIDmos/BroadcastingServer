@@ -18,34 +18,45 @@
   websocket_handle/2,
   websocket_info/2]).
 
+-record(state, {
+  gs,
+  partner
+}).
 
 %% every connection
-init(Req, State) ->
-  io:fwrite("init ~p~n", [self()]),
-  {cowboy_websocket, Req, State}.
+init(Req, ClientGS) ->
+  {cowboy_websocket, Req, #state{gs = ClientGS, partner = nil}}.
 
 
 %% every message
-websocket_init([Name] = State) ->
-  io:fwrite("ws_init ~p~n", [self()]),
-  ets:insert(Name, {self()}),
+websocket_init(#state{gs = GS} = State) ->
+%%  Tell server that we are free
+  clients_gs:free(GS, self()),
   {ok, State}.
 
 
-websocket_handle({text, Msg}, [Name] = State) ->
+websocket_handle({text, Msg}, #state{gs = GS, partner = Partner} = State) ->
   case Msg of
-    <<"{\"message\":\"new\"}">> ->
-      resend2others(Msg, Name),
-      {reply, {text, <<"New sent">>}, State};
+    <<"{\"message\":\"sleep\"}">> ->
+      {reply, {text, <<"Sleeping">>}, State, hibernate};
+
+    <<"{\"message\":\"find_partner\"}">> ->
+      case findPartner(GS,Partner) of
+        {ok,Reply,NewPartner}->{reply, {text, Reply}, State#state{partner = NewPartner}};
+        {error,Reply}->{reply, {text, Reply}, State#state{partner = nil}}
+      end;
+
     <<"{\"candidate\"", _Rest/binary>> ->
-      resend2others(Msg, Name),
-      {reply, {text, <<"Candidate sent">>}, State};
+      Reply = send_and_reply(Msg,Partner,<<"Candidate sent">>),
+      {reply, {text, Reply}, State};
+
     <<"{\"type\":\"offer\"", _Rest/binary>> ->
-      resend2others(Msg, Name),
-      {reply, {text, <<"Offer sent">>}, State};
+      Reply = send_and_reply(Msg,Partner,<<"Offer sent">>),
+
+      {reply, {text, Reply}, State};
     <<"{\"type\":\"answer\"", _Rest/binary>> ->
-      resend2others(Msg, Name),
-      {reply, {text, <<"Answer sent">>}, State};
+      Reply = send_and_reply(Msg,Partner,<<"Answer sent">>),
+      {reply, {text, Reply}, State};
     _ ->
       io:fwrite("No match~p~n", [Msg]),
       {reply, {text, <<"You said ", Msg/binary>>}, State}
@@ -54,26 +65,64 @@ websocket_handle(_Data, State) ->
   {ok, State}.
 
 
-websocket_info({message, _Pid, Bin_Msg}, State) ->
+websocket_info({message, Pid, need_offer}, #state{partner = nil, gs = GS} = State) ->
+  clients_gs:busy(GS, self()),
+  Pid ! {message, self(), free},
+  {reply, {text, <<"{\"message\":\"need_offer\"}">>}, State#state{partner = Pid}};
+websocket_info({message, Pid, need_offer}, #state{partner = _Partner, gs = GS} = State) ->
+  clients_gs:busy(GS, self()),
+  Pid ! {message, self(), busy},
+  {[], State};
+websocket_info({message, _Pid, disconnect}, #state{partner = Partner, gs = GS} = State) when is_pid(Partner) ->
+  clients_gs:free(GS, self()),
+  {reply,{text, <<"{\"message\":\"disconnect\"}">>}, State#state{partner = nil}};
+
+websocket_info({bin_message, _Pid, Bin_Msg}, State) ->
   {reply, [{text, <<Bin_Msg/binary>>}], State};
 websocket_info(Info, State) ->
   io:fwrite("Websocket ~p got message ~p~n", [self(), Info]),
   {[], State}.
 
 
-resend2others(Message, TbName) when is_list(Message) ->
-  resend2others(erlang:list_to_binary(Message), TbName);
-resend2others(Message, TbName) when is_binary(Message) ->
-  Others = lists:filter(fun({Pid}) -> Pid /= self() end, ets:tab2list(TbName)),
-  lists:foreach(fun({Pid}) ->
-    Alive = is_process_alive(Pid),
-    if
-      Alive ->
-        Pid ! {message, self(), Message};
-      true ->
-        ets:delete(TbName, Pid)
-    end
-                end, Others);
+findPartner(GS,nil) ->
+  clients_gs:free(GS,self()),
+  case clients_gs:partner(GS, self()) of
+    {ok, no_partners} -> {error,<<"{\"reply\":\"no_parnters\"}">>};
+    {ok, Pid} ->
+      Pid ! {message, self(), need_offer},
+      receive
+        {message, Pid, busy} ->
+          {error,<<"{\"reply\":\"error\"}">>};
+        {message, Pid, free} ->
+          clients_gs:busy(GS,self()),
+          {ok,<<"{\"reply\":\"found\"}">>,Pid}
+      end;
+    _ -> {error,<<"{\"reply\":\"error\"}">>}
+  end;
+findPartner(GS,Partner) ->
+  Partner ! {message, self(), disconnect},
+  findPartner(GS, nil).
 
-resend2others(_, _) ->
+
+send_and_reply(Message, Partner, Reply) ->
+  case send2Partner(Message, Partner) of
+    ok -> Reply;
+    _ -> <<"{\"reply\":\"error\"}">>
+  end.
+
+
+send2Partner(Message, Partner) when is_list(Message) ->
+  send2Partner(erlang:list_to_binary(Message), Partner);
+send2Partner(Message, Partner) when is_binary(Message) ->
+  Alive = is_process_alive(Partner),
+  if
+    Alive -> Partner ! {bin_message, self(), Message}, ok;
+    true -> disconnect
+  end;
+%%  NewPartners = lists:filter(fun(Pid) ->
+%%    Pid /= self() and is_process_alive(Pid) end,
+%%    Partners),
+%%  lists:foreach(fun(Pid) -> Pid ! {message, self(), Message} end, NewPartners);
+
+send2Partner(_, _) ->
   badarg.

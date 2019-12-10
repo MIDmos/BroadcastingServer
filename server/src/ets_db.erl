@@ -9,10 +9,9 @@
 -module(ets_db).
 -author("Ivan").
 
--record(channel, {
+-record(room, {
   id,
-  name,
-  streamer
+  members
 }).
 
 -record(counter, {
@@ -20,45 +19,49 @@
   last_id = 0
 }).
 
--record(spectator, {
-  id,
-  pid,
-  channel = nil
-}).
+%%-record(spectator, {
+%%  id,
+%%  pid,
+%%  channel = nil
+%%}).
 
 
 -export([
   new/0,
   clear/0,
-  new_channel/2,
-  delete_channel/1,
-  channels/0
+  new_room/0,
+  delete_room/1,
+  rooms/0
 ]).
 
 new() ->
-  ets:new(channels, [named_table, {keypos, 2}, public]),
+  ets:new(rooms, [named_table, {keypos, 2}, public, ordered_set]),
 %%  ets:new(spectators, [named_table,{keypos,2},public]),
 %%  ets:insert(spectators, #counter{}),
-  ets:insert(channels, #counter{}).
+  ets:insert(rooms, #counter{}),
+  [new_room() || _ <- lists:seq(1, 5)],
+  ok.
 
 clear() ->
-  ets:delete_all_objects(channels).
+  ets:delete(rooms),
+  new().
 
-new_channel(Streamer, Name) ->
+
+new_room() ->
   NewId = channel_id(),
-  Channel = #channel{id = NewId, name = Name, streamer = Streamer},
-  ets:insert(channels, Channel).
+  Channel = #room{id = NewId, members = []},
+  ets:insert(rooms, Channel).
 
-delete_channel(ChannelId) ->
-  ets:delete(channels, ChannelId).
+delete_room(ChannelId) ->
+  ets:delete(rooms, ChannelId).
 
-
-channels() ->
-  ets:tab2list(channels).
+rooms() ->
+  [{counter, 0, _} | Rooms] = ets:tab2list(rooms),
+  Rooms.
 
 
 channel_id() ->
-  ets:update_counter(channels, 0, {#counter.last_id, 1}).
+  ets:update_counter(rooms, 0, {#counter.last_id, 1}).
 
 %% SPECTATOR TABLE
 %%spectator_id() ->
@@ -73,7 +76,7 @@ channel_id() ->
 %%%% subscribe spectator to channel
 %%subscribe(SpectatorId, ChannelId) ->
 %%  ets:update_element(spectators,SpectatorId,{#spectator.channel,ChannelId}),
-%%  #channel{streamer = Streamer}=ets:lookup(channels,ChannelId),
+%%  #channel{streamer = Streamer}=ets:lookup(rooms,ChannelId),
 %%  #spectator{pid = Pid}=ets:lookup(spectators,SpectatorId),
 %%  Pid ! {message, self(),{join,Streamer}}.
 %%

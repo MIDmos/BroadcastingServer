@@ -1,4 +1,28 @@
+*{
+    margin: 0;
+    padding: 0;
+}
+body{
+    min-width: 100%;
+}
+.flex {
+    width: 100%;
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+
+}
+.block{
+    margin: 0 2%;
+    min-height: 300px;
+}
 video {
+    margin: 1% 1%;
     max-width: 100%;
-    width: 320px;
+    width: 500px;
+    background-color: black;
+}
+button{
+    padding: 5px;
+    margin: 0 10px;
 }

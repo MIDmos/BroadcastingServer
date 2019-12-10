@@ -10,14 +10,12 @@
 -export([start/2, stop/1]).
 
 start(_StartType, _StartArgs) ->
-  TableName = channels,
-  ets:new(TableName, [named_table, public]),
+  {ok,Pid}=clients_gs:start_link(),
   Dispatch = cowboy_router:compile([
     {'_', [
-      {"/streamer", cowboy_static, {priv_file, server, "streamer.html"}},
-      {"/spectator", cowboy_static, {priv_file, server, "spectator.html"}},
-      {"/chat", cowboy_static, {priv_file, server, "chat.html"}},
-      {"/ws", sdp_ws, [TableName]},
+%%      {"/streamer", cowboy_static, {priv_file, server, "streamer.html"}},
+%%      {"/spectator", cowboy_static, {priv_file, server, "spectator.html"}},
+      {"/ws", sdp_ws, Pid},
       {"/", cowboy_static, {priv_file, server, "index.html"}},
       {"/static/[...]", cowboy_static, {priv_dir, server, "static"}}
     ]}
