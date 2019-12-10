@@ -2,12 +2,22 @@
     margin: 0;
     padding: 0;
 }
+#messageBox{
+    font-family: "Andale Mono", monospace;
+}
+header{
+    padding: 20px;
+    min-width: 100%;
+    text-align: center;
+    background-color: #30303050;
+    margin-bottom: 20px;
+}
 body{
     min-width: 100%;
 }
 .flex {
     width: 100%;
-    align-items: center;
+    justify-content: center;
     display: flex;
     flex-wrap: wrap;
 

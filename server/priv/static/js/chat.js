@@ -27,16 +27,19 @@ const localVideo = document.getElementById('localVideo');
 const findBtn = document.getElementById('findButton');
 const startBtn = document.getElementById('startButton');
 const endBtn = document.getElementById('endButton');
+const messageBox = document.getElementById('messageBox');
 
 
 findBtn.disabled = true;
 endBtn.disabled = true;
 startBtn.disabled = true;
+messageBox.innerText="Click Start button to join us.";
 
 function startClick() {
     startBtn.disabled = true;
     findBtn.disabled = false;
     endBtn.disabled = false;
+    messageBox.innerText="Click Find button to search for partner";
     // Get local Stream
     navigator.mediaDevices.getUserMedia({audio: true, video: true})
         .then(function (stream) {
@@ -46,6 +49,7 @@ function startClick() {
 }
 
 function endClick() {
+    messageBox.innerText="Click Start button to join us.";
     findBtn.disabled = true;
     endBtn.disabled = true;
     if (pc) pc.close();
@@ -102,7 +106,9 @@ socket.onmessage = function (event) {
     try {
         const obj = JSON.parse(event.data);
         if (obj.message === "disconnect") {
+            remoteVideo.srcObject=null;
             console.log("Disconnect");
+            messageBox.innerText="Disconnected";
             findNewPartner();
 
         } else if (obj.message === "need_offer") {
@@ -132,6 +138,7 @@ socket.onmessage = function (event) {
                 })
 
         } else if (obj.reply === "no_parnters") {
+            messageBox.innerText="You are alone here. Wait a few seconds.";
             console.log("No partners ");
             timer = setInterval(findPartner, 3000);
 
@@ -161,6 +168,8 @@ function newPC() {
     pc.addStream(localStream);
     pc.oniceconnectionstatechange = function () {
         if (pc.iceConnectionState === 'disconnected') {
+            remoteVideo.srcObject=null;
+            messageBox.innerText="Disconnected";
             console.log('Disconnected');
             findPartner();
         }
@@ -173,6 +182,7 @@ function onRemoteStreamAdded(event) {
     remoteStream = event.stream;
     console.log("StreamNow:", remoteStream);
     remoteVideo.srcObject = remoteStream;
+    messageBox.innerText="";
 }
 
 // Invoked when got candidate message

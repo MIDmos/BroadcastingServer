@@ -7,25 +7,30 @@
 </head>
 
 <body>
-<h1>Web chat</h1>
+<header>
+    <h1>Web chat</h1>
+</header>
 
 <div class="flex">
     <div class="block">
         <h2>Remote video</h2>
         <video id="remoteVideo" autoplay></video>
+        <div>
+            <span id="messageBox"></span>
+        </div>
     </div>
 
     <div class="block">
         <h2>Local video</h2>
         <video id="localVideo" autoplay></video>
+        <div class="flex">
+            <button id="findButton">Find</button>
+            <button id="startButton">Start</button>
+            <button id="endButton">End</button>
+        </div>
     </div>
 </div>
 
-<div class="flex">
-    <button id="findButton">Find</button>
-    <button id="startButton">Start</button>
-    <button id="endButton">End</button>
-</div>
 
 <!--<script src="static/js/io_adapter.js"></script>-->
 <script src="http://webrtc.github.io/adapter/adapter-latest.js"></script>
