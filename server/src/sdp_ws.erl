@@ -31,7 +31,6 @@ init(Req, ClientGS) ->
 %% every message
 websocket_init(#state{gs = GS} = State) ->
 %%  Tell server that we are free
-  clients_gs:free(GS, self()),
   {ok, State}.
 
 
