@@ -29,36 +29,44 @@ init(Req, ClientGS) ->
 
 
 %% every message
-websocket_init(#state{gs = GS} = State) ->
+websocket_init(#state{}=State) ->
 %%  Tell server that we are free
   {ok, State}.
 
 
 websocket_handle({text, Msg}, #state{gs = GS, partner = Partner} = State) ->
-  case Msg of
-    <<"{\"message\":\"sleep\"}">> ->
-      {reply, {text, <<"Sleeping">>}, State, hibernate};
-
-    <<"{\"message\":\"find_partner\"}">> ->
-      case findPartner(GS,Partner) of
-        {ok,Reply,NewPartner}->{reply, {text, Reply}, State#state{partner = NewPartner}};
-        {error,Reply}->{reply, {text, Reply}, State#state{partner = nil}}
-      end;
-
-    <<"{\"candidate\"", _Rest/binary>> ->
-      Reply = send_and_reply(Msg,Partner,<<"Candidate sent">>),
-      {reply, {text, Reply}, State};
-
-    <<"{\"type\":\"offer\"", _Rest/binary>> ->
-      Reply = send_and_reply(Msg,Partner,<<"Offer sent">>),
-
-      {reply, {text, Reply}, State};
-    <<"{\"type\":\"answer\"", _Rest/binary>> ->
-      Reply = send_and_reply(Msg,Partner,<<"Answer sent">>),
-      {reply, {text, Reply}, State};
+  Data = jsx:decode(Msg),
+  case Data of
+    null ->
+      {reply, {close, <<"{\"reply\":\"bad_json\"}">>}, State};
     _ ->
-      io:fwrite("No match~p~n", [Msg]),
-      {reply, {text, <<"You said ", Msg/binary>>}, State}
+      case proplists:get_value(<<"message">>, Data) of
+        <<"sleep">> ->
+          {reply, {text, <<"Sleeping">>}, State, hibernate};
+        <<"find_partner">> ->
+          case findPartner(GS, Partner) of
+            {ok, Reply, NewPartner} -> {reply, {text, Reply}, State#state{partner = NewPartner}};
+            {error, Reply} -> {reply, {text, Reply}, State#state{partner = nil}}
+          end;
+        undefined ->
+          case proplists:get_value(<<"type">>, Data) of
+            <<"offer">> ->
+              Reply = send_and_reply(Msg, Partner, <<"Offer sent">>),
+              {reply, {text, Reply}, State};
+            <<"answer">> ->
+              Reply = send_and_reply(Msg, Partner, <<"Answer sent">>),
+              {reply, {text, Reply}, State};
+            undefined ->
+              case proplists:get_value(<<"candidate">>, Data) of
+                undefined ->
+                  io:fwrite("No match~p~n", [Msg]),
+                  {reply, {text, <<"You said ", Msg/binary>>}, State};
+                _Candidate ->
+                  Reply = send_and_reply(Msg, Partner, <<"Candidate sent">>),
+                  {reply, {text, Reply}, State}
+              end
+          end
+      end
   end;
 websocket_handle(_Data, State) ->
   {ok, State}.
@@ -74,7 +82,7 @@ websocket_info({message, Pid, need_offer}, #state{partner = _Partner, gs = GS} =
   {[], State};
 websocket_info({message, _Pid, disconnect}, #state{partner = Partner, gs = GS} = State) when is_pid(Partner) ->
   clients_gs:free(GS, self()),
-  {reply,{text, <<"{\"message\":\"disconnect\"}">>}, State#state{partner = nil}};
+  {reply, {text, <<"{\"message\":\"disconnect\"}">>}, State#state{partner = nil}};
 
 websocket_info({bin_message, _Pid, Bin_Msg}, State) ->
   {reply, [{text, <<Bin_Msg/binary>>}], State};
@@ -83,26 +91,27 @@ websocket_info(Info, State) ->
   {[], State}.
 
 
-findPartner(GS,nil) ->
-  clients_gs:free(GS,self()),
+findPartner(GS, nil) ->
+  clients_gs:free(GS, self()),
   case clients_gs:partner(GS, self()) of
-    {ok, no_partners} -> {error,<<"{\"reply\":\"no_parnters\"}">>};
+    {ok, no_partners} -> {error, <<"{\"reply\":\"no_parnters\"}">>};
     {ok, Pid} ->
       Pid ! {message, self(), need_offer},
       receive
         {message, Pid, busy} ->
-          {error,<<"{\"reply\":\"error\"}">>};
+          {error, <<"{\"reply\":\"error\"}">>};
         {message, Pid, free} ->
-          clients_gs:busy(GS,self()),
-          {ok,<<"{\"reply\":\"found\"}">>,Pid}
+          clients_gs:busy(GS, self()),
+          {ok, <<"{\"reply\":\"found\"}">>, Pid}
       end;
-    _ -> {error,<<"{\"reply\":\"error\"}">>}
+    _ -> {error, <<"{\"reply\":\"error\"}">>}
   end;
-findPartner(GS,Partner) ->
+findPartner(GS, Partner) ->
   Partner ! {message, self(), disconnect},
   findPartner(GS, nil).
 
-
+send_and_reply(_Message, nil, _Reply) ->
+  <<"{\"reply\":\"error\"}">>;
 send_and_reply(Message, Partner, Reply) ->
   case send2Partner(Message, Partner) of
     ok -> Reply;
